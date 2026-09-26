@@ -1,12 +1,12 @@
-﻿{
+{
   "incident_id": "INC-002",
   "severity": "P1",
-  "title": "User service errors following v15 deployment with DB schema migration",
+  "title": "Order service errors following v2.0.0 deployment with DB schema migration",
   "declared_at": "2026-09-26T09:20:00Z",
-  "services": ["user-service", "api-gateway", "auth-service"],
+  "services": ["order-service", "api-gateway", "database", "payment-service", "inventory-service"],
   "service_dependencies": {
-    "api-gateway": ["user-service", "auth-service"],
-    "auth-service": ["user-service"]
+    "api-gateway": ["order-service"],
+    "order-service": ["database", "payment-service", "inventory-service"]
   },
   "elasticsearch": {
     "host": "http://localhost:9200",
@@ -15,61 +15,73 @@
     "deployment_index": "deployments-inc-002"
   },
   "prometheus": {
-    "host": "http://localhost:9090"
+    "host": "http://localhost:9090",
+    "queries": {
+      "error_rate": "http_error_rate{service='order-service'}",
+      "latency_p99": "http_latency_p99_ms{service='order-service'}"
+    }
   },
   "metrics_snapshot": {
-    "user-service": { "error_rate": 0.15, "p99_latency_ms": 800, "request_rate": 320, "cpu_percent": 41, "db_connections_active": 45 },
-    "api-gateway":  { "error_rate": 0.05, "p99_latency_ms": 950, "request_rate": 870, "cpu_percent": 38, "db_connections_active": 0 },
-    "auth-service": { "error_rate": 0.03, "p99_latency_ms": 600, "request_rate": 290, "cpu_percent": 22, "db_connections_active": 10 }
+    "order-service": { "error_rate": 0.18, "p99_latency_ms": 1250, "request_rate": 340, "cpu_percent": 45, "memory_percent": 52, "db_latency_ms": 850, "db_connections_active": 46 },
+    "api-gateway":   { "error_rate": 0.08, "p99_latency_ms": 1350, "request_rate": 820, "cpu_percent": 36, "memory_percent": 40, "db_latency_ms": 0,   "db_connections_active": 0  },
+    "database":      { "error_rate": 0.18, "p99_latency_ms": 1200, "request_rate": 340, "cpu_percent": 68, "memory_percent": 62, "db_latency_ms": 850, "db_connections_active": 46 }
   },
   "deployments": [
     {
-      "service": "user-service",
-      "version": "v15",
-      "previous_version": "v14",
-      "commit": "def789ghi012",
+      "deployment_id": "DEP-INC-002",
+      "incident_id": "INC-002",
+      "service": "order-service",
+      "version": "v2.0.0",
+      "previous_version": "v1.1.0",
+      "commit": "c4d5e6f7a8b9",
       "deployed_at": "2026-09-26T09:00:00Z",
+      "timestamp": "2026-09-26T09:00:00Z",
       "deployer": "ci-pipeline",
       "health_status_before": "healthy",
+      "change_description": "Database schema migration: added NOT NULL column tax_code to orders table and updated order creation repository",
       "changes": [
-        "Database schema migration: added NOT NULL column email_verified to users table",
-        "Added email verification flow to user registration",
-        "Updated UserRepository to populate email_verified on login"
-      ]
+        "Database schema migration: ALTER TABLE orders ADD COLUMN tax_code VARCHAR NOT NULL",
+        "Added tax calculation and validation to checkout flow",
+        "Updated OrderRepository to persist tax_code on order placement"
+      ],
+      "rollback_safe": false
     }
   ],
   "known_good_versions": {
-    "user-service": {
-      "version": "v14",
+    "order-service": {
+      "version": "v1.1.0",
       "health_verified_at": "2026-09-26T08:58:00Z",
-      "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 85 },
-      "database_schema_version": 14
+      "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 45, "db_latency_ms": 12 },
+      "database_schema_version": 19
     }
   },
   "database_state": {
-    "current_schema_version": 15,
+    "current_schema_version": 20,
     "migration_applied_at": "2026-09-26T09:02:00Z",
-    "migration_description": "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE",
+    "migration_description": "ALTER TABLE orders ADD COLUMN tax_code VARCHAR NOT NULL",
     "migration_status": "complete",
     "backward_compatible": false,
-    "v14_compatibility": "INCOMPATIBLE: v14 code does not include email_verified column in INSERT statements, causing NOT NULL constraint violations on new registrations"
+    "previous_version_compatibility": "INCOMPATIBLE: v1.1.0 code does not supply tax_code in INSERT statements, causing NOT NULL constraint violations on ALL new orders if rolled back"
   },
   "logs": [
-    { "timestamp": "2026-09-26T09:00:05Z", "service": "user-service", "level": "INFO",  "message": "Deployment v15 started. Running database migrations.", "trace_id": null, "version": "v15" },
-    { "timestamp": "2026-09-26T09:02:10Z", "service": "user-service", "level": "INFO",  "message": "Migration complete: added column email_verified (NOT NULL) to users table.", "trace_id": null, "version": "v15" },
-    { "timestamp": "2026-09-26T09:02:30Z", "service": "user-service", "level": "INFO",  "message": "Deployment v15 complete. Service healthy.", "trace_id": null, "version": "v15" },
-    { "timestamp": "2026-09-26T09:05:00Z", "service": "user-service", "level": "INFO",  "message": "Background job started: backfilling email_verified for existing users.", "trace_id": null, "version": "v15" },
-    { "timestamp": "2026-09-26T09:15:03Z", "service": "user-service", "level": "ERROR", "message": "PG::NotNullViolation: ERROR: null value in column 'email_verified' violates not-null constraint. INSERT INTO users(id, name, email) VALUES (...)", "trace_id": "trace-u001", "version": "v15" },
-    { "timestamp": "2026-09-26T09:15:10Z", "service": "api-gateway",  "level": "ERROR", "message": "user-service returned 500 for POST /api/v1/users/register", "trace_id": "trace-u001", "version": "v22" },
-    { "timestamp": "2026-09-26T09:15:45Z", "service": "user-service", "level": "ERROR", "message": "PG::NotNullViolation: null value in column 'email_verified' violates not-null constraint", "trace_id": "trace-u002", "version": "v15" },
-    { "timestamp": "2026-09-26T09:16:30Z", "service": "user-service", "level": "WARN",  "message": "Error rate rising: 3% -> 8% -> 15% in last 90 seconds", "trace_id": null, "version": "v15" },
-    { "timestamp": "2026-09-26T09:18:00Z", "service": "auth-service", "level": "WARN",  "message": "user-service user lookup failing for some requests", "trace_id": "trace-u003", "version": "v9" },
-    { "timestamp": "2026-09-26T09:20:00Z", "service": "api-gateway",  "level": "CRITICAL", "message": "P1 DECLARED: user-service error rate 15%, impacting registration and some auth flows", "trace_id": null, "version": "v22" }
+    { "timestamp": "2026-09-26T09:00:05Z", "incident_id": "INC-002", "service": "order-service", "level": "INFO",  "message": "Deployment v2.0.0 started. Running database migrations.", "trace_id": null, "span_id": null, "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:02:10Z", "incident_id": "INC-002", "service": "database",      "level": "INFO",  "message": "Migration complete: ALTER TABLE orders ADD COLUMN tax_code VARCHAR NOT NULL.", "trace_id": null, "span_id": null, "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:02:30Z", "incident_id": "INC-002", "service": "order-service", "level": "INFO",  "message": "Deployment v2.0.0 complete. Health check passed.", "trace_id": null, "span_id": null, "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:12:00Z", "incident_id": "INC-002", "service": "order-service", "level": "WARN",  "message": "Database latency increasing: query execution average 480ms (baseline: 12ms)", "trace_id": "trace-m001", "span_id": "span-ord-m01", "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:14:20Z", "incident_id": "INC-002", "service": "database",      "level": "WARN",  "message": "Exclusive lock acquired on table orders during index build; transactions queued", "trace_id": "trace-m001", "span_id": "span-db-m01", "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:15:10Z", "incident_id": "INC-002", "service": "order-service", "level": "ERROR", "message": "Database query timeout: INSERT INTO orders failed to acquire lock within 3000ms", "trace_id": "trace-m001", "span_id": "span-ord-m01", "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:15:45Z", "incident_id": "INC-002", "service": "database",      "level": "ERROR", "message": "DBConstraintError: null value in column 'tax_code' violates not-null constraint on orders", "trace_id": "trace-m002", "span_id": "span-db-m02", "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:16:00Z", "incident_id": "INC-002", "service": "order-service", "level": "ERROR", "message": "HTTP 500: Failed to persist order due to database constraint violation", "trace_id": "trace-m002", "span_id": "span-ord-m02", "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:16:30Z", "incident_id": "INC-002", "service": "api-gateway",    "level": "ERROR", "message": "order-service upstream call failed with status 500", "trace_id": "trace-m002", "span_id": "span-gw-m02", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:18:00Z", "incident_id": "INC-002", "service": "order-service", "level": "WARN",  "message": "order-service p99 latency spiked to 1250ms (baseline: 45ms)", "trace_id": null, "span_id": null, "version": "v2.0.0" },
+    { "timestamp": "2026-09-26T09:20:00Z", "incident_id": "INC-002", "service": "api-gateway",    "level": "CRITICAL", "message": "P1 Incident Declared: checkout failure rate at 18% following database migration", "trace_id": null, "span_id": null, "version": "v1.0.0" }
   ],
   "traces": [
-    { "trace_id": "trace-u001", "span_id": "span-gw-u01",  "parent_span_id": null,            "service": "api-gateway",  "operation": "POST /api/v1/users/register", "duration_ms": 420, "status": "ERROR", "timestamp": "2026-09-26T09:15:02Z" },
-    { "trace_id": "trace-u001", "span_id": "span-usr-u01", "parent_span_id": "span-gw-u01",   "service": "user-service", "operation": "createUser",                  "duration_ms": 395, "status": "ERROR", "timestamp": "2026-09-26T09:15:03Z" },
-    { "trace_id": "trace-u002", "span_id": "span-gw-u02",  "parent_span_id": null,            "service": "api-gateway",  "operation": "POST /api/v1/users/register", "duration_ms": 410, "status": "ERROR", "timestamp": "2026-09-26T09:15:44Z" },
-    { "trace_id": "trace-u002", "span_id": "span-usr-u02", "parent_span_id": "span-gw-u02",   "service": "user-service", "operation": "createUser",                  "duration_ms": 388, "status": "ERROR", "timestamp": "2026-09-26T09:15:45Z" }
+    { "incident_id": "INC-002", "trace_id": "trace-m001", "span_id": "span-gw-m01",  "parent_span_id": null,           "service": "api-gateway",   "operation": "POST /api/v1/orders", "duration_ms": 1600, "status": "ERROR", "timestamp": "2026-09-26T09:15:08Z", "start_time": "2026-09-26T09:15:08Z" },
+    { "incident_id": "INC-002", "trace_id": "trace-m001", "span_id": "span-ord-m01", "parent_span_id": "span-gw-m01",   "service": "order-service", "operation": "processOrder",        "duration_ms": 1580, "status": "ERROR", "timestamp": "2026-09-26T09:15:08Z", "start_time": "2026-09-26T09:15:08Z" },
+    { "incident_id": "INC-002", "trace_id": "trace-m001", "span_id": "span-db-m01",  "parent_span_id": "span-ord-m01",  "service": "database",      "operation": "INSERT INTO orders",   "duration_ms": 1500, "status": "ERROR", "timestamp": "2026-09-26T09:15:09Z", "start_time": "2026-09-26T09:15:09Z" },
+    { "incident_id": "INC-002", "trace_id": "trace-m002", "span_id": "span-gw-m02",  "parent_span_id": null,           "service": "api-gateway",   "operation": "POST /api/v1/orders", "duration_ms": 850,  "status": "ERROR", "timestamp": "2026-09-26T09:15:44Z", "start_time": "2026-09-26T09:15:44Z" },
+    { "incident_id": "INC-002", "trace_id": "trace-m002", "span_id": "span-ord-m02", "parent_span_id": "span-gw-m02",   "service": "order-service", "operation": "processOrder",        "duration_ms": 840,  "status": "ERROR", "timestamp": "2026-09-26T09:15:44Z", "start_time": "2026-09-26T09:15:44Z" },
+    { "incident_id": "INC-002", "trace_id": "trace-m002", "span_id": "span-db-m02",  "parent_span_id": "span-ord-m02",  "service": "database",      "operation": "INSERT INTO orders",   "duration_ms": 800,  "status": "ERROR", "timestamp": "2026-09-26T09:15:45Z", "start_time": "2026-09-26T09:15:45Z" }
   ]
 }

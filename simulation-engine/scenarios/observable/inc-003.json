@@ -1,12 +1,12 @@
-﻿{
+{
   "incident_id": "INC-003",
   "severity": "P1",
-  "title": "Cascading failures from external payment gateway degradation",
+  "title": "Cascading failures from payment-service degradation impacting order checkout",
   "declared_at": "2026-09-26T11:08:00Z",
-  "services": ["payment-service", "api-gateway", "order-service"],
+  "services": ["api-gateway", "order-service", "payment-service", "database", "inventory-service"],
   "service_dependencies": {
-    "api-gateway": ["payment-service", "order-service"],
-    "order-service": ["payment-service"],
+    "api-gateway": ["order-service"],
+    "order-service": ["payment-service", "database", "inventory-service"],
     "payment-service": ["external-payment-gateway"]
   },
   "elasticsearch": {
@@ -15,34 +15,53 @@
     "trace_index": "traces-inc-003",
     "deployment_index": "deployments-inc-003"
   },
-  "prometheus": { "host": "http://localhost:9090" },
+  "prometheus": {
+    "host": "http://localhost:9090",
+    "queries": {
+      "error_rate": "http_error_rate{service='payment-service'}",
+      "latency_p99": "http_latency_p99_ms{service='payment-service'}"
+    }
+  },
   "metrics_snapshot": {
-    "payment-service": { "error_rate": 0.42, "p99_latency_ms": 15000, "request_rate": 420, "cpu_percent": 91, "db_connections_active": 98 },
-    "api-gateway":     { "error_rate": 0.18, "p99_latency_ms": 15400, "request_rate": 890, "cpu_percent": 62, "db_connections_active": 0  },
-    "order-service":   { "error_rate": 0.11, "p99_latency_ms": 14900, "request_rate": 200, "cpu_percent": 38, "db_connections_active": 22 }
+    "payment-service": { "error_rate": 0.45, "p99_latency_ms": 5000, "request_rate": 400, "cpu_percent": 88, "memory_percent": 75, "db_latency_ms": 15, "db_connections_active": 95 },
+    "order-service":   { "error_rate": 0.32, "p99_latency_ms": 5150, "request_rate": 410, "cpu_percent": 72, "memory_percent": 60, "db_latency_ms": 14, "db_connections_active": 22 },
+    "api-gateway":     { "error_rate": 0.25, "p99_latency_ms": 5200, "request_rate": 850, "cpu_percent": 58, "memory_percent": 45, "db_latency_ms": 0,  "db_connections_active": 0  }
   },
   "deployments": [],
   "known_good_versions": {
-    "payment-service": { "version": "v41", "health_verified_at": "2026-09-26T10:55:00Z", "baseline_metrics": { "error_rate": 0.002, "p99_latency_ms": 120 } },
-    "api-gateway":     { "version": "v11", "health_verified_at": "2026-09-26T10:55:00Z", "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 95  } }
+    "payment-service": { "version": "v41",   "health_verified_at": "2026-09-26T10:55:00Z", "baseline_metrics": { "error_rate": 0.002, "p99_latency_ms": 120 } },
+    "order-service":   { "version": "v1.1.0", "health_verified_at": "2026-09-26T10:55:00Z", "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 45  } },
+    "api-gateway":     { "version": "v1.0.0", "health_verified_at": "2026-09-26T10:55:00Z", "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 30  } }
   },
   "external_dependencies": [
     { "name": "external-payment-gateway", "type": "third-party", "status": "degraded", "status_page": "https://status.paymentgateway.example.com", "degraded_since": "2026-09-26T11:00:00Z" }
   ],
   "logs": [
-    { "timestamp": "2026-09-26T11:00:05Z", "service": "payment-service", "level": "WARN",  "message": "External payment gateway slow: 5100ms (SLA: 3000ms)", "trace_id": "trace-c001", "version": "v41" },
-    { "timestamp": "2026-09-26T11:00:30Z", "service": "payment-service", "level": "WARN",  "message": "External payment gateway slow: 8200ms — retry 1/3", "trace_id": "trace-c002", "version": "v41" },
-    { "timestamp": "2026-09-26T11:01:00Z", "service": "payment-service", "level": "ERROR", "message": "External payment gateway timeout after 15000ms — all 3 retries exhausted", "trace_id": "trace-c003", "version": "v41" },
-    { "timestamp": "2026-09-26T11:02:00Z", "service": "payment-service", "level": "ERROR", "message": "Thread pool pressure: 78/100 active connections (external gateway holding threads)", "trace_id": null, "version": "v41" },
-    { "timestamp": "2026-09-26T11:03:00Z", "service": "payment-service", "level": "ERROR", "message": "Thread pool critical: 98/100 active connections. New requests queuing.", "trace_id": null, "version": "v41" },
-    { "timestamp": "2026-09-26T11:04:00Z", "service": "api-gateway",    "level": "ERROR", "message": "payment-service 504: upstream timeout after 15s", "trace_id": "trace-c004", "version": "v11" },
-    { "timestamp": "2026-09-26T11:05:00Z", "service": "order-service",  "level": "ERROR", "message": "Cannot process payment: payment-service unresponsive", "trace_id": null, "version": "v8"  },
-    { "timestamp": "2026-09-26T11:08:00Z", "service": "api-gateway",    "level": "CRITICAL","message": "P1 DECLARED: 42% payment failure rate. External gateway degradation suspected.", "trace_id": null, "version": "v11" }
+    { "timestamp": "2026-09-26T10:58:00Z", "incident_id": "INC-003", "service": "api-gateway",     "level": "INFO",  "message": "Order request received for cart-901", "trace_id": "trace-c001", "span_id": "span-gw-c01", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T10:58:00Z", "incident_id": "INC-003", "service": "order-service",   "level": "INFO",  "message": "order-service: workflow completed in 45ms", "trace_id": "trace-c001", "span_id": "span-ord-c01", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T11:00:05Z", "incident_id": "INC-003", "service": "payment-service", "level": "WARN",  "message": "Payment processing latency increasing: upstream payment authorization took 4200ms", "trace_id": "trace-c002", "span_id": "span-pay-c02", "version": "v41" },
+    { "timestamp": "2026-09-26T11:00:30Z", "incident_id": "INC-003", "service": "payment-service", "level": "WARN",  "message": "Payment gateway slow: 8200ms — retry attempt 1 of 3", "trace_id": "trace-c002", "span_id": "span-pay-c02", "version": "v41" },
+    { "timestamp": "2026-09-26T11:01:00Z", "incident_id": "INC-003", "service": "payment-service", "level": "ERROR", "message": "Payment authorization timeout after 15000ms: retries exhausted", "trace_id": "trace-c002", "span_id": "span-pay-c02", "version": "v41" },
+    { "timestamp": "2026-09-26T11:02:00Z", "incident_id": "INC-003", "service": "payment-service", "level": "ERROR", "message": "Thread pool saturated: 96/100 active connections waiting on payment gateway", "trace_id": null, "span_id": null, "version": "v41" },
+    { "timestamp": "2026-09-26T11:03:00Z", "incident_id": "INC-003", "service": "order-service",   "level": "WARN",  "message": "payment-service dependency latency high: request took 5020ms", "trace_id": "trace-c002", "span_id": "span-ord-c02", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T11:03:30Z", "incident_id": "INC-003", "service": "payment-service", "level": "WARN",  "message": "Circuit breaker approaching trip threshold: failure rate 38% exceeds warning level 25%", "trace_id": null, "span_id": null, "version": "v41" },
+    { "timestamp": "2026-09-26T11:04:00Z", "incident_id": "INC-003", "service": "payment-service", "level": "CRITICAL", "message": "Circuit breaker OPEN on payment-service: failing fast to isolate downstream failure", "trace_id": null, "span_id": null, "version": "v41" },
+    { "timestamp": "2026-09-26T11:04:15Z", "incident_id": "INC-003", "service": "order-service",   "level": "ERROR", "message": "Downstream payment-service timed out: charge request failed after 5000ms", "trace_id": "trace-c002", "span_id": "span-ord-c02", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T11:04:30Z", "incident_id": "INC-003", "service": "order-service",   "level": "ERROR", "message": "Cannot process orders: payment-service circuit breaker open — returning 503", "trace_id": "trace-c003", "span_id": "span-ord-c03", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T11:05:00Z", "incident_id": "INC-003", "service": "api-gateway",     "level": "WARN",  "message": "order-service response time degraded: 5120ms", "trace_id": "trace-c002", "span_id": "span-gw-c02", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T11:05:30Z", "incident_id": "INC-003", "service": "api-gateway",     "level": "ERROR", "message": "api-gateway: upstream order-service returned 504 Gateway Timeout", "trace_id": "trace-c002", "span_id": "span-gw-c02", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T11:06:00Z", "incident_id": "INC-003", "service": "api-gateway",     "level": "ERROR", "message": "order-service returning 503: payment dependency unavailable", "trace_id": "trace-c003", "span_id": "span-gw-c03", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T11:08:00Z", "incident_id": "INC-003", "service": "api-gateway",     "level": "CRITICAL", "message": "P1 Incident Declared: 35% checkout failure rate cascading across services", "trace_id": null, "span_id": null, "version": "v1.0.0" }
   ],
   "traces": [
-    { "trace_id": "trace-c001", "span_id": "span-pay-c01", "parent_span_id": null,              "service": "payment-service",         "operation": "callExternalGateway", "duration_ms": 5100,  "status": "SLOW",  "timestamp": "2026-09-26T11:00:04Z" },
-    { "trace_id": "trace-c004", "span_id": "span-gw-c04",  "parent_span_id": null,              "service": "api-gateway",             "operation": "POST /api/v1/charge", "duration_ms": 15100, "status": "ERROR", "timestamp": "2026-09-26T11:03:58Z" },
-    { "trace_id": "trace-c004", "span_id": "span-pay-c04", "parent_span_id": "span-gw-c04",     "service": "payment-service",         "operation": "chargePayment",       "duration_ms": 15080, "status": "ERROR", "timestamp": "2026-09-26T11:03:59Z" },
-    { "trace_id": "trace-c004", "span_id": "span-ext-c04", "parent_span_id": "span-pay-c04",    "service": "external-payment-gateway","operation": "POST /v2/charge",     "duration_ms": 15000, "status": "ERROR", "timestamp": "2026-09-26T11:04:00Z" }
+    { "incident_id": "INC-003", "trace_id": "trace-c001", "span_id": "span-gw-c01",  "parent_span_id": null,          "service": "api-gateway",     "operation": "POST /api/v1/orders", "duration_ms": 48,   "status": "OK",    "timestamp": "2026-09-26T10:58:00Z", "start_time": "2026-09-26T10:58:00Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c001", "span_id": "span-ord-c01", "parent_span_id": "span-gw-c01",  "service": "order-service",   "operation": "processOrder",        "duration_ms": 45,   "status": "OK",    "timestamp": "2026-09-26T10:58:00Z", "start_time": "2026-09-26T10:58:00Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c001", "span_id": "span-pay-c01", "parent_span_id": "span-ord-c01", "service": "payment-service", "operation": "chargePayment",       "duration_ms": 30,   "status": "OK",    "timestamp": "2026-09-26T10:58:00Z", "start_time": "2026-09-26T10:58:00Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c002", "span_id": "span-gw-c02",  "parent_span_id": null,          "service": "api-gateway",     "operation": "POST /api/v1/orders", "duration_ms": 5150, "status": "ERROR", "timestamp": "2026-09-26T11:04:10Z", "start_time": "2026-09-26T11:04:10Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c002", "span_id": "span-ord-c02", "parent_span_id": "span-gw-c02",  "service": "order-service",   "operation": "processOrder",        "duration_ms": 5120, "status": "ERROR", "timestamp": "2026-09-26T11:04:10Z", "start_time": "2026-09-26T11:04:10Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c002", "span_id": "span-pay-c02", "parent_span_id": "span-ord-c02", "service": "payment-service", "operation": "chargePayment",       "duration_ms": 5000, "status": "ERROR", "timestamp": "2026-09-26T11:04:10Z", "start_time": "2026-09-26T11:04:10Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c003", "span_id": "span-gw-c03",  "parent_span_id": null,          "service": "api-gateway",     "operation": "POST /api/v1/orders", "duration_ms": 120,  "status": "ERROR", "timestamp": "2026-09-26T11:06:00Z", "start_time": "2026-09-26T11:06:00Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c003", "span_id": "span-ord-c03", "parent_span_id": "span-gw-c03",  "service": "order-service",   "operation": "processOrder",        "duration_ms": 115,  "status": "ERROR", "timestamp": "2026-09-26T11:06:00Z", "start_time": "2026-09-26T11:06:00Z" },
+    { "incident_id": "INC-003", "trace_id": "trace-c003", "span_id": "span-pay-c03", "parent_span_id": "span-ord-c03", "service": "payment-service", "operation": "chargePayment",       "duration_ms": 5,    "status": "ERROR", "timestamp": "2026-09-26T11:06:00Z", "start_time": "2026-09-26T11:06:00Z" }
   ]
 }

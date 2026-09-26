@@ -1,4 +1,4 @@
-﻿global:
+global:
   scrape_interval: 5s
   evaluation_interval: 5s
 
@@ -6,4 +6,14 @@ scrape_configs:
   - job_name: "simulation-api"
     static_configs:
       - targets: ["simulation-api:5001"]
+    metrics_path: /metrics
+
+  - job_name: "microservices"
+    static_configs:
+      - targets:
+          - "api-gateway:8000"
+          - "order-service:8001"
+          - "payment-service:8002"
+          - "inventory-service:8003"
+          - "database:8004"
     metrics_path: /metrics

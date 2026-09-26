@@ -1,12 +1,12 @@
-﻿{
+{
   "incident_id": "INC-001",
   "severity": "P1",
-  "title": "Payment service degradation following v42 deployment",
+  "title": "Order service degradation following v1.1.0 deployment",
   "declared_at": "2026-09-26T10:07:00Z",
-  "services": ["payment-service", "api-gateway", "order-service"],
+  "services": ["order-service", "api-gateway", "database", "payment-service", "inventory-service"],
   "service_dependencies": {
-    "api-gateway": ["payment-service", "order-service"],
-    "order-service": ["payment-service"]
+    "api-gateway": ["order-service"],
+    "order-service": ["database", "payment-service", "inventory-service"]
   },
   "elasticsearch": {
     "host": "http://localhost:9200",
@@ -15,54 +15,74 @@
     "deployment_index": "deployments-inc-001"
   },
   "prometheus": {
-    "host": "http://localhost:9090"
+    "host": "http://localhost:9090",
+    "queries": {
+      "error_rate": "http_error_rate{service='order-service'}",
+      "latency_p99": "http_latency_p99_ms{service='order-service'}"
+    }
   },
   "metrics_snapshot": {
-    "payment-service": { "error_rate": 0.31, "p99_latency_ms": 2400, "request_rate": 450, "cpu_percent": 78, "db_connections_active": 95 },
-    "api-gateway":     { "error_rate": 0.12, "p99_latency_ms": 3100, "request_rate": 890, "cpu_percent": 45, "db_connections_active": 0 },
-    "order-service":   { "error_rate": 0.08, "p99_latency_ms": 2900, "request_rate": 210, "cpu_percent": 32, "db_connections_active": 20 }
+    "order-service": { "error_rate": 0.28, "p99_latency_ms": 2400, "request_rate": 350, "cpu_percent": 74, "memory_percent": 65, "db_latency_ms": 2200, "db_connections_active": 48 },
+    "api-gateway":   { "error_rate": 0.15, "p99_latency_ms": 2600, "request_rate": 750, "cpu_percent": 42, "memory_percent": 40, "db_latency_ms": 0,    "db_connections_active": 0 },
+    "database":      { "error_rate": 0.25, "p99_latency_ms": 2350, "request_rate": 350, "cpu_percent": 85, "memory_percent": 70, "db_latency_ms": 2200, "db_connections_active": 48 }
   },
   "deployments": [
     {
-      "service": "payment-service",
-      "version": "v42",
-      "previous_version": "v41",
-      "commit": "abc123def456",
+      "deployment_id": "DEP-INC-001",
+      "incident_id": "INC-001",
+      "service": "order-service",
+      "version": "v1.1.0",
+      "previous_version": "v1.0.0",
+      "commit": "a1b2c3d4e5f6",
       "deployed_at": "2026-09-26T10:00:00Z",
+      "timestamp": "2026-09-26T10:00:00Z",
       "deployer": "ci-pipeline",
       "health_status_before": "healthy",
+      "change_description": "Order repository refactoring for checkout history retrieval and connection pool tuning",
       "changes": [
-        "Changed retry timeout from 5s to 30s in PaymentGatewayClient",
-        "Refactored connection pool initialization"
-      ]
+        "Refactored order history query to perform unindexed table join",
+        "Adjusted DB connection pool size to 50"
+      ],
+      "rollback_safe": true
     }
   ],
   "known_good_versions": {
-    "payment-service": {
-      "version": "v41",
+    "order-service": {
+      "version": "v1.0.0",
       "health_verified_at": "2026-09-26T09:58:00Z",
-      "baseline_metrics": { "error_rate": 0.002, "p99_latency_ms": 120 }
+      "baseline_metrics": { "error_rate": 0.001, "p99_latency_ms": 45, "db_latency_ms": 12 }
     }
   },
   "logs": [
-    { "timestamp": "2026-09-26T10:00:02Z", "service": "payment-service", "level": "INFO",  "message": "Deployment v42 started. Retry timeout updated to 30s.", "trace_id": null, "version": "v42" },
-    { "timestamp": "2026-09-26T10:00:15Z", "service": "payment-service", "level": "INFO",  "message": "Deployment v42 complete. Service healthy.", "trace_id": null, "version": "v42" },
-    { "timestamp": "2026-09-26T10:04:03Z", "service": "payment-service", "level": "WARN",  "message": "PaymentGatewayClient: request took 5200ms (threshold: 2000ms)", "trace_id": "trace-001", "version": "v42" },
-    { "timestamp": "2026-09-26T10:04:08Z", "service": "payment-service", "level": "ERROR", "message": "ConnectionTimeout: payment gateway did not respond within 30000ms", "trace_id": "trace-001", "version": "v42" },
-    { "timestamp": "2026-09-26T10:04:09Z", "service": "api-gateway",    "level": "ERROR", "message": "Upstream payment-service returned 504 after 30s", "trace_id": "trace-001", "version": "v11" },
-    { "timestamp": "2026-09-26T10:04:30Z", "service": "payment-service", "level": "ERROR", "message": "ConnectionTimeout: payment gateway did not respond within 30000ms", "trace_id": "trace-002", "version": "v42" },
-    { "timestamp": "2026-09-26T10:04:31Z", "service": "order-service",  "level": "WARN",  "message": "payment-service dependency slow: 30200ms", "trace_id": "trace-002", "version": "v8" },
-    { "timestamp": "2026-09-26T10:05:00Z", "service": "payment-service", "level": "ERROR", "message": "Thread pool saturated: 95/100 connections active", "trace_id": null, "version": "v42" },
-    { "timestamp": "2026-09-26T10:05:15Z", "service": "payment-service", "level": "CRITICAL", "message": "Circuit breaker OPEN: error rate 31% exceeds threshold 10%", "trace_id": null, "version": "v42" },
-    { "timestamp": "2026-09-26T10:05:20Z", "service": "api-gateway",    "level": "ERROR", "message": "payment-service circuit breaker open — returning 503", "trace_id": "trace-003", "version": "v11" },
-    { "timestamp": "2026-09-26T10:06:00Z", "service": "order-service",  "level": "ERROR", "message": "Cannot process orders: payment-service unavailable", "trace_id": null, "version": "v8" },
-    { "timestamp": "2026-09-26T10:07:00Z", "service": "api-gateway",    "level": "CRITICAL", "message": "P1 DECLARED: payment-service degradation impacting 35% of requests", "trace_id": null, "version": "v11" }
+    { "timestamp": "2026-09-26T09:50:00Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "order-service initialized version v1.0.0", "trace_id": null, "span_id": null, "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:52:10Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "Order request received for cart-101", "trace_id": "trace-001", "span_id": "span-ord-001", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:52:10Z", "incident_id": "INC-001", "service": "database",      "level": "INFO",  "message": "database: query executed successfully (12ms)", "trace_id": "trace-001", "span_id": "span-db-001", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:52:10Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "order-service: workflow completed in 45ms", "trace_id": "trace-001", "span_id": "span-ord-001", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:55:00Z", "incident_id": "INC-001", "service": "api-gateway",    "level": "INFO",  "message": "Order request received for cart-102", "trace_id": "trace-000", "span_id": "span-gw-000", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T09:55:00Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "order-service: workflow completed in 42ms", "trace_id": "trace-000", "span_id": "span-ord-000", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T10:00:05Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "Deployment v1.1.0 started. Rolling out new version.", "trace_id": null, "span_id": null, "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:00:18Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "Deployment v1.1.0 complete. Service healthy. Traffic shifted.", "trace_id": null, "span_id": null, "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:02:15Z", "incident_id": "INC-001", "service": "order-service", "level": "INFO",  "message": "Order request received for cart-5402", "trace_id": "trace-002", "span_id": "span-ord-002", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:03:30Z", "incident_id": "INC-001", "service": "order-service", "level": "WARN",  "message": "Database latency increasing: query execution took 850ms (threshold: 100ms)", "trace_id": "trace-002", "span_id": "span-ord-002", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:04:10Z", "incident_id": "INC-001", "service": "order-service", "level": "WARN",  "message": "Database connection pool saturated: 48/50 active connections", "trace_id": "trace-002", "span_id": "span-ord-002", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:04:45Z", "incident_id": "INC-001", "service": "order-service", "level": "ERROR", "message": "Database query timeout: SELECT orders join failed to return within 5000ms", "trace_id": "trace-003", "span_id": "span-ord-003", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:05:00Z", "incident_id": "INC-001", "service": "order-service", "level": "ERROR", "message": "order-service: workflow failed: Database query timeout", "trace_id": "trace-003", "span_id": "span-ord-003", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:05:05Z", "incident_id": "INC-001", "service": "api-gateway",    "level": "ERROR", "message": "Upstream order-service returned 504 Gateway Timeout", "trace_id": "trace-003", "span_id": "span-gw-003", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T10:05:30Z", "incident_id": "INC-001", "service": "order-service", "level": "ERROR", "message": "Database query timeout: Connection acquisition timed out after 5000ms", "trace_id": "trace-004", "span_id": "span-ord-004", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:05:40Z", "incident_id": "INC-001", "service": "order-service", "level": "ERROR", "message": "HTTP 500 Internal Server Error: Failed to process order due to database timeout", "trace_id": "trace-004", "span_id": "span-ord-004", "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:05:45Z", "incident_id": "INC-001", "service": "api-gateway",    "level": "ERROR", "message": "order-service returned HTTP 500: Internal Server Error", "trace_id": "trace-004", "span_id": "span-gw-004", "version": "v1.0.0" },
+    { "timestamp": "2026-09-26T10:06:00Z", "incident_id": "INC-001", "service": "order-service", "level": "WARN",  "message": "order-service p99 latency spiked to 2400ms (baseline: 45ms)", "trace_id": null, "span_id": null, "version": "v1.1.0" },
+    { "timestamp": "2026-09-26T10:07:00Z", "incident_id": "INC-001", "service": "api-gateway",    "level": "CRITICAL", "message": "P1 Incident Declared: order-service error rate 28% exceeds critical threshold", "trace_id": null, "span_id": null, "version": "v1.0.0" }
   ],
   "traces": [
-    { "trace_id": "trace-001", "span_id": "span-gw-001",  "parent_span_id": null,          "service": "api-gateway",    "operation": "POST /api/v1/orders", "duration_ms": 30412, "status": "ERROR", "timestamp": "2026-09-26T10:04:02Z" },
-    { "trace_id": "trace-001", "span_id": "span-ord-001", "parent_span_id": "span-gw-001",  "service": "order-service",  "operation": "processOrder",        "duration_ms": 30380, "status": "ERROR", "timestamp": "2026-09-26T10:04:02Z" },
-    { "trace_id": "trace-001", "span_id": "span-pay-001", "parent_span_id": "span-ord-001", "service": "payment-service","operation": "chargePayment",       "duration_ms": 30350, "status": "ERROR", "timestamp": "2026-09-26T10:04:03Z" },
-    { "trace_id": "trace-002", "span_id": "span-gw-002",  "parent_span_id": null,           "service": "api-gateway",    "operation": "POST /api/v1/orders", "duration_ms": 30400, "status": "ERROR", "timestamp": "2026-09-26T10:04:29Z" },
-    { "trace_id": "trace-002", "span_id": "span-pay-002", "parent_span_id": "span-gw-002",  "service": "payment-service","operation": "chargePayment",       "duration_ms": 30320, "status": "ERROR", "timestamp": "2026-09-26T10:04:30Z" }
+    { "incident_id": "INC-001", "trace_id": "trace-001", "span_id": "span-gw-001",  "parent_span_id": null,          "service": "api-gateway",   "operation": "POST /api/v1/orders", "duration_ms": 48,   "status": "OK",    "timestamp": "2026-09-26T09:52:10Z", "start_time": "2026-09-26T09:52:10Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-001", "span_id": "span-ord-001", "parent_span_id": "span-gw-001",  "service": "order-service", "operation": "processOrder",        "duration_ms": 45,   "status": "OK",    "timestamp": "2026-09-26T09:52:10Z", "start_time": "2026-09-26T09:52:10Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-001", "span_id": "span-db-001",  "parent_span_id": "span-ord-001", "service": "database",      "operation": "sqlExecute",          "duration_ms": 12,   "status": "OK",    "timestamp": "2026-09-26T09:52:10Z", "start_time": "2026-09-26T09:52:10Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-002", "span_id": "span-gw-002",  "parent_span_id": null,          "service": "api-gateway",   "operation": "POST /api/v1/orders", "duration_ms": 2450, "status": "SLOW",  "timestamp": "2026-09-26T10:02:15Z", "start_time": "2026-09-26T10:02:15Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-002", "span_id": "span-ord-002", "parent_span_id": "span-gw-002",  "service": "order-service", "operation": "processOrder",        "duration_ms": 2420, "status": "SLOW",  "timestamp": "2026-09-26T10:02:15Z", "start_time": "2026-09-26T10:02:15Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-002", "span_id": "span-db-002",  "parent_span_id": "span-ord-002", "service": "database",      "operation": "sqlExecute",          "duration_ms": 2350, "status": "SLOW",  "timestamp": "2026-09-26T10:02:15Z", "start_time": "2026-09-26T10:02:15Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-003", "span_id": "span-gw-003",  "parent_span_id": null,          "service": "api-gateway",   "operation": "POST /api/v1/orders", "duration_ms": 5100, "status": "ERROR", "timestamp": "2026-09-26T10:04:45Z", "start_time": "2026-09-26T10:04:45Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-003", "span_id": "span-ord-003", "parent_span_id": "span-gw-003",  "service": "order-service", "operation": "processOrder",        "duration_ms": 5080, "status": "ERROR", "timestamp": "2026-09-26T10:04:45Z", "start_time": "2026-09-26T10:04:45Z" },
+    { "incident_id": "INC-001", "trace_id": "trace-003", "span_id": "span-db-003",  "parent_span_id": "span-ord-003", "service": "database",      "operation": "sqlExecute",          "duration_ms": 5000, "status": "ERROR", "timestamp": "2026-09-26T10:04:45Z", "start_time": "2026-09-26T10:04:45Z" }
   ]
 }

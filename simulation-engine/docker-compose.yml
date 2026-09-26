@@ -1,4 +1,4 @@
-﻿version: "3.8"
+version: "3.8"
 
 services:
   elasticsearch:
@@ -62,6 +62,89 @@ services:
         condition: service_healthy
     volumes:
       - ./scenarios:/app/scenarios
+
+  # ── Simulated Microservices ──────────────────────────────────────────────────
+  database:
+    build:
+      context: ./microservices
+      dockerfile: Dockerfile
+    container_name: incident-database
+    ports:
+      - "8004:8004"
+    environment:
+      - SERVICE_NAME=database
+      - PORT=8004
+      - ES_HOST=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  inventory-service:
+    build:
+      context: ./microservices
+      dockerfile: Dockerfile
+    container_name: incident-inventory-service
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_NAME=inventory-service
+      - PORT=8003
+      - ES_HOST=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: ./microservices
+      dockerfile: Dockerfile
+    container_name: incident-payment-service
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_NAME=payment-service
+      - PORT=8002
+      - ES_HOST=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  order-service:
+    build:
+      context: ./microservices
+      dockerfile: Dockerfile
+    container_name: incident-order-service
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=order-service
+      - PORT=8001
+      - ES_HOST=http://elasticsearch:9200
+      - PAYMENT_SERVICE_URL=http://payment-service:8002
+      - INVENTORY_SERVICE_URL=http://inventory-service:8003
+      - DATABASE_URL=http://database:8004
+    depends_on:
+      - payment-service
+      - inventory-service
+      - database
+      - elasticsearch
+
+  api-gateway:
+    build:
+      context: ./microservices
+      dockerfile: Dockerfile
+    container_name: incident-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=api-gateway
+      - PORT=8000
+      - ES_HOST=http://elasticsearch:9200
+      - ORDER_SERVICE_URL=http://order-service:8001
+      - AUTO_TRAFFIC=true
+    depends_on:
+      - order-service
+      - elasticsearch
 
 volumes:
   es-data:
